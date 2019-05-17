@@ -11,11 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import re
 from collections import OrderedDict
 
 import flask
 from six import iteritems, string_types
-
 
 DENY = 'DENY'
 SAMEORIGIN = 'SAMEORIGIN'
@@ -143,6 +143,7 @@ class Talisman(object):
             self.content_security_policy = OrderedDict(content_security_policy)
         else:
             self.content_security_policy = content_security_policy
+        self.default_content_security_policy = content_security_policy
         self.content_security_policy_report_uri = \
             content_security_policy_report_uri
         self.content_security_policy_report_only = \
@@ -154,7 +155,7 @@ class Talisman(object):
                 'requires a URI to be specified in '
                 'content_security_policy_report_uri')
         self.content_security_policy_nonce_in = (
-            content_security_policy_nonce_in or []
+                content_security_policy_nonce_in or []
         )
 
         app.jinja_env.globals['csp_nonce'] = self._get_nonce
@@ -175,9 +176,12 @@ class Talisman(object):
 
         app.before_request(self._force_https)
         app.before_request(self._make_nonce)
+        self._rules = {}
         app.after_request(self._set_response_headers)
 
     def _get_local_options(self):
+        previous_policy = self.content_security_policy
+        self._rules_apply_policy()
         view_function = flask.current_app.view_functions.get(
             flask.request.endpoint)
         view_options = getattr(
@@ -192,6 +196,7 @@ class Talisman(object):
         view_options.setdefault(
             'feature_policy', self.feature_policy
         )
+        self.content_security_policy = previous_policy
 
         return view_options
 
@@ -335,6 +340,23 @@ class Talisman(object):
     def _set_referrer_policy_headers(self, headers):
         headers['Referrer-Policy'] = self.referrer_policy
 
+    def _rules_apply_policy(self):
+        if len(self._rules) > 0:
+            path = flask.request.path
+            for rule, policy in self._rules.items():
+                if re.search(rule, path):
+                    self.content_security_policy = policy
+                    return
+
+    def add_rule_content_security_policy(self, rule, policy):
+        self._rules[rule] = policy
+        return len(self._rules)
+
+    def remove_rule_content_security_policy(self, rule):
+        if rule in self._rules:
+            del self._rules[rule]
+        return len(self._rules)
+
     def __call__(self, **kwargs):
         """Use talisman as a decorator to configure options for a particular
         view.
@@ -356,26 +378,31 @@ class Talisman(object):
             def embeddable():
                 return 'Embeddable'
         """
+
         def decorator(f):
             setattr(f, 'talisman_view_options', kwargs)
             return f
+
         return decorator
 
 
 try:
     import secrets
+
     get_random_string = secrets.token_urlsafe  # pragma: no cover
 
 except ImportError:  # pragma: no cover
     import random
     import string
+
     rnd = random.SystemRandom()
+
 
     def get_random_string(length):
         allowed_chars = (
-            string.ascii_lowercase +
-            string.ascii_uppercase +
-            string.digits)
+                string.ascii_lowercase +
+                string.ascii_uppercase +
+                string.digits)
         return ''.join(
             rnd.choice(allowed_chars)
             for _ in range(length))

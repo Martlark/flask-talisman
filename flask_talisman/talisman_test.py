@@ -278,3 +278,45 @@ class TestTalismanExtension(unittest.TestCase):
         Talisman(app, feature_policy='vibrate \'none\'')
         response = app.test_client().get('/', environ_overrides=HTTPS_ENVIRON)
         self.assertIn('vibrate \'none\'', response.headers['Feature-Policy'])
+
+    def testRouteRulePolicy(self):
+        def route_policy_change():
+            return flask.render_template_string(
+                '<script>alert("hello")</script>'
+            )
+
+        self.app.route('/policy_change')(route_policy_change)
+
+        # no rule
+
+        response = self.client.get('/policy_change', environ_overrides=HTTPS_ENVIRON)
+        self.assertEqual(200, response.status_code)
+        self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
+
+        # add rule
+
+        rule = '^/policy_change'
+        policy = {
+            'default-src': [
+                '\'self\'',
+                '\'unsafe-inline\'',
+            ]}
+
+        rule_count = self.talisman.add_rule_content_security_policy(rule, policy)
+        self.assertEqual(1, rule_count)
+        # matches
+        response = self.client.get('/policy_change', environ_overrides=HTTPS_ENVIRON)
+        self.assertEqual(200, response.status_code)
+        self.assertIn("default-src 'self' 'unsafe-inline'", response.headers['Content-Security-Policy'])
+        # no match
+        response = self.client.get('/', environ_overrides=HTTPS_ENVIRON)
+        self.assertEqual(200, response.status_code)
+        self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
+
+        # remove
+
+        rule_count = self.talisman.remove_rule_content_security_policy(rule)
+        self.assertEqual(0, rule_count)
+        response = self.client.get('/policy_change', environ_overrides=HTTPS_ENVIRON)
+        self.assertEqual(200, response.status_code)
+        self.assertIn("default-src 'self'", response.headers['Content-Security-Policy'])
