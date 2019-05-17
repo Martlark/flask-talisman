@@ -103,6 +103,7 @@ Options
 -  ``content_security_policy_report_uri``, default ``None``, a string
    indicating the report URI used for `CSP violation reports
    <https://developer.mozilla.org/en-US/docs/Web/Security/CSP/Using_CSP_violation_reports>`_
+- ``legacy_content_security_policy_header``, default ``True``, Whether to add X-CSP header
 -  ``referrer_policy``, default ``strict-origin-when-cross-origin``, a string
    that sets the Referrer Policy header to send a full URL when performing a same-origin
    request, only send the origin of the document to an equally secure destination
@@ -277,6 +278,34 @@ The nonce needs to be added to the script tag in the template:
 
 Note that the CSP directive (`script-src` in the example) to which the `nonce-...`
 source should be added needs to be defined explicitly.
+
+Example 7
+~~~~~~~~~
+
+A web site adminstrator wants to override the CSP directives via an
+environment variable which doesn't support specifying the policy as
+a Python dictionary, e.g.:
+
+.. code:: bash
+
+    export CSP_DIRECTIVES="default-src 'self'; image-src *"
+    python app.py
+
+Then in the app code you can read the CSP directives from the environment:
+
+.. code:: python
+
+    import os
+    from flask_talisman import Talisman, DEFAULT_CSP_POLICY
+
+    talisman = Talisman(
+        app,
+        content_security_policy=os.environ.get("CSP_DIRECTIVES", DEFAULT_CSP_POLICY),
+    )
+
+As you can see above the policy can be defined simply just like the official
+specification requires the HTTP header to be set: As a semicolon separated
+list of individual CSP directives.
 
 Feature Policy
 --------------

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from collections import OrderedDict
 
 import flask
 from six import iteritems, string_types
@@ -73,6 +74,7 @@ class Talisman(object):
             content_security_policy_report_uri=None,
             content_security_policy_report_only=False,
             content_security_policy_nonce_in=None,
+            legacy_content_security_policy_header=True,
             referrer_policy=DEFAULT_REFERRER_POLICY,
             session_cookie_secure=True,
             session_cookie_http_only=True):
@@ -107,6 +109,7 @@ class Talisman(object):
                 the POST data
             content_security_policy_nonce_in: A list of csp sections to include
                 a per-request nonce value in
+            legacy_content_security_policy_header: Whether to add X-CSP header
             referrer_policy: A string describing the referrer policy for the
                 response.
             session_cookie_secure: Forces the session cookie to only be sent
@@ -119,7 +122,7 @@ class Talisman(object):
         See README.rst for a detailed description of each option.
         """
         if isinstance(feature_policy, dict):
-            self.feature_policy = feature_policy.copy()
+            self.feature_policy = OrderedDict(feature_policy)
         else:
             self.feature_policy = feature_policy
         self.force_https = force_https
@@ -137,7 +140,7 @@ class Talisman(object):
             strict_transport_security_include_subdomains
 
         if isinstance(content_security_policy, dict):
-            self.content_security_policy = content_security_policy.copy()
+            self.content_security_policy = OrderedDict(content_security_policy)
         else:
             self.content_security_policy = content_security_policy
         self.content_security_policy_report_uri = \
@@ -155,6 +158,9 @@ class Talisman(object):
         )
 
         app.jinja_env.globals['csp_nonce'] = self._get_nonce
+
+        self.legacy_content_security_policy_header = \
+            legacy_content_security_policy_header
 
         self.referrer_policy = referrer_policy
 
@@ -241,7 +247,7 @@ class Talisman(object):
         if isinstance(policy, string_types):
             # parse the string into a policy dict
             policy_string = policy
-            policy = {}
+            policy = OrderedDict()
 
             for policy_part in policy_string.split(';'):
                 policy_parts = policy_part.strip().split(' ')
@@ -305,7 +311,8 @@ class Talisman(object):
 
         headers[csp_header] = policy
         # IE 10-11, Older Firefox.
-        headers['X-' + csp_header] = policy
+        if self.legacy_content_security_policy_header:
+            headers['X-' + csp_header] = policy
 
     def _set_hsts_headers(self, headers):
         criteria = [

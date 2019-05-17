@@ -84,6 +84,19 @@ class TestTalismanExtension(unittest.TestCase):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
 
+    def testLegacyContentSecurityPolicyHeaderOption(self):
+        # No header X-Content-Security-Policy present
+        self.talisman.legacy_content_security_policy_header = False
+
+        response = self.client.get('/', environ_overrides=HTTPS_ENVIRON)
+        self.assertNotIn('X-Content-Security-Policy', response.headers)
+
+        # Header X-Content-Security-Policy present
+        self.talisman.legacy_content_security_policy_header = True
+
+        response = self.client.get('/', environ_overrides=HTTPS_ENVIRON)
+        self.assertIn('X-Content-Security-Policy', response.headers)
+
     def testHstsOptions(self):
         self.talisman.force_ssl = False
 
@@ -135,8 +148,7 @@ class TestTalismanExtension(unittest.TestCase):
         self.talisman.content_security_policy['image-src'] = '*'
         response = self.client.get('/', environ_overrides=HTTPS_ENVIRON)
         csp = response.headers['Content-Security-Policy']
-        self.assertIn('default-src \'self\'', csp)
-        self.assertIn('image-src *', csp)
+        self.assertEqual(csp, "default-src 'self'; image-src *")
 
         self.talisman.content_security_policy['image-src'] = [
             '\'self\'',
